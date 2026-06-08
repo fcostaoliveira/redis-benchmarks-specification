@@ -41,7 +41,7 @@ def inject_replication_sync_metrics(
         return False
 
 
-def generate_standalone_redis_server_args(
+def generate_standalone_dragonfly_server_args(
     binary,
     port,
     dbdir,
@@ -49,6 +49,75 @@ def generate_standalone_redis_server_args(
     redis_arguments="",
     password=None,
 ):
+    """Build a launch command for a Dragonfly server (gflags-based CLI).
+
+    Dragonfly parses its flags with Abseil/gflags and ABORTS on any unknown flag, so we
+    cannot pass the redis-style args (``--protected-mode``, ``--logfile``, ``--save``,
+    ``--maxmemory-policy``, ``--io-threads`` ...). We emit only valid Dragonfly gflags and
+    translate / drop the redis ``configuration-parameters`` accordingly. Snapshotting to a
+    file is disabled (``--dbfilename=``) and the server is pinned to a single proactor
+    thread by default so a standalone run is comparable to single-threaded redis-server
+    (a topology may override via a ``--proactor_threads=N`` token in ``redis_arguments``).
+    """
+    # Allow a topology to override the proactor-thread count; default to 1 (apples-to-apples).
+    proactor_threads = "1"
+    if redis_arguments != "":
+        for tok in redis_arguments.split(" "):
+            if tok.startswith("--proactor_threads=") and "=" in tok:
+                proactor_threads = tok.split("=", 1)[1]
+    command = [
+        binary,
+        "--port",
+        "{}".format(port),
+        "--logtostderr",  # replaces redis --logfile
+        "--proactor_threads={}".format(proactor_threads),
+        "--dbfilename=",  # no snapshot file (the Dragonfly analogue of redis save "")
+        "--default_lua_flags=allow-undeclared-keys",  # tolerate EVAL-based init_commands
+    ]
+    if password is not None and password != "":
+        command.extend(["--requirepass", password])
+        logging.info("Dragonfly server will be started with password authentication")
+    if dbdir != "":
+        command.extend(["--dir", dbdir])
+    # Translate the handful of redis config params that have a Dragonfly equivalent; all
+    # other redis-only params are silently dropped so Dragonfly does not abort on startup.
+    dragonfly_param_map = {"maxmemory": "maxmemory"}
+    if configuration_parameters is not None:
+        for parameter, parameter_value in configuration_parameters.items():
+            if parameter in dragonfly_param_map:
+                command.append(
+                    "--{}={}".format(dragonfly_param_map[parameter], parameter_value)
+                )
+            else:
+                logging.info(
+                    "Dropping redis-only config parameter '{}' for Dragonfly launch".format(
+                        parameter
+                    )
+                )
+    return command
+
+
+def generate_standalone_redis_server_args(
+    binary,
+    port,
+    dbdir,
+    configuration_parameters=None,
+    redis_arguments="",
+    password=None,
+    server_name="redis",
+):
+    # Dragonfly speaks RESP/port-6379 but uses a gflags CLI that aborts on redis-style
+    # flags — dispatch to a server-specific arg generator. Default path (redis/valkey,
+    # which share redis-server semantics) is unchanged.
+    if server_name == "dragonfly":
+        return generate_standalone_dragonfly_server_args(
+            binary,
+            port,
+            dbdir,
+            configuration_parameters,
+            redis_arguments,
+            password,
+        )
     added_params = ["port", "protected-mode", "dir", "requirepass", "logfile"]
     # start redis-server
     command = [
