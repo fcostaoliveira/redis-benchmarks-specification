@@ -11,9 +11,13 @@ arg generator and the --build_timeout CLI flag. Validates that:
 """
 import argparse
 
+import pytest
+
 from redis_benchmarks_specification.__self_contained_coordinator__.docker import (
     generate_standalone_redis_server_args,
     generate_standalone_dragonfly_server_args,
+    spin_docker_cluster_redis,
+    spin_up_redis_replicas,
 )
 from redis_benchmarks_specification.__cli__.args import spec_cli_args
 
@@ -149,3 +153,57 @@ def test_build_timeout_cli_flag():
     assert default_args.build_timeout == 0
     set_args = parser.parse_args(["--build_timeout", "1800"])
     assert set_args.build_timeout == 1800
+
+
+def test_dragonfly_disables_version_check_phone_home():
+    cmd = generate_standalone_dragonfly_server_args(
+        "/mnt/redis/dragonfly-server", 6379, "/mnt/redis/"
+    )
+    assert "--version_check=false" in cmd
+
+
+def test_dragonfly_proactor_override_space_form():
+    """The space form --proactor_threads N must be honored (not just the = form)."""
+    cmd = generate_standalone_dragonfly_server_args(
+        "/mnt/redis/dragonfly-server",
+        6379,
+        "/mnt/redis/",
+        redis_arguments="--proactor_threads 8",
+    )
+    assert "--proactor_threads=8" in cmd
+    assert "--proactor_threads=1" not in cmd
+
+
+def test_dragonfly_proactor_defaults_to_one_when_absent():
+    cmd = generate_standalone_dragonfly_server_args(
+        "/mnt/redis/dragonfly-server", 6379, "/mnt/redis/", redis_arguments="--io-threads 4"
+    )
+    assert "--proactor_threads=1" in cmd
+
+
+def test_cluster_topology_rejects_dragonfly():
+    """Cluster topology must fail loudly for Dragonfly (standalone-only in P1)."""
+    with pytest.raises(NotImplementedError):
+        spin_docker_cluster_redis(
+            1, 1, 0, None, None, [], 6379, "img", "/tmp/", server_name="dragonfly"
+        )
+
+
+def test_replica_topology_rejects_dragonfly():
+    """Replica topology must fail loudly for Dragonfly (standalone-only in P1)."""
+    with pytest.raises(NotImplementedError):
+        spin_up_redis_replicas(
+            1,
+            6379,
+            0,
+            None,
+            [],
+            "img",
+            "",
+            "/mnt/redis/",
+            1,
+            None,
+            "",
+            None,
+            server_name="dragonfly",
+        )
