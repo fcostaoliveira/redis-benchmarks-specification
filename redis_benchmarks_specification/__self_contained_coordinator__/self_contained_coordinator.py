@@ -1783,6 +1783,7 @@ def process_self_contained_coordinator_stream(
                                         redis_configuration_parameters,
                                         redis_arguments,
                                         redis_password,
+                                        server_name=server_name,
                                     )
                                     command_str = " ".join(command)
                                     db_cpuset_cpus, current_cpu_pos = (
@@ -1804,7 +1805,24 @@ def process_self_contained_coordinator_stream(
                                         port=redis_proc_start_port,
                                         password=redis_password,
                                     )
-                                    redis_conn.ping()
+                                    # Retry PING after the fixed container sleep — some
+                                    # servers (e.g. io_uring-based) accept connections a
+                                    # beat later. First attempt succeeds immediately for
+                                    # redis-server, so behavior there is unchanged.
+                                    _standalone_ping_ok = False
+                                    for _ping_attempt in range(20):
+                                        try:
+                                            redis_conn.ping()
+                                            _standalone_ping_ok = True
+                                            break
+                                        except (
+                                            redis.ConnectionError,
+                                            redis.TimeoutError,
+                                        ):
+                                            time.sleep(0.5)
+                                    if not _standalone_ping_ok:
+                                        # exhausted retries — raise the underlying error
+                                        redis_conn.ping()
                                     primary_conns.append(redis_conn)
 
                                 # Allocate the client cpuset up front so that
@@ -1917,11 +1935,15 @@ def process_self_contained_coordinator_stream(
                                     )
 
                                 server_version_keyname = f"{server_name}_version"
-                                if (
-                                    git_version is None
-                                    and server_version_keyname in redis_info
-                                ):
-                                    git_version = redis_info[server_version_keyname]
+                                if git_version is None:
+                                    # Prefer the server-specific version key; fall back to
+                                    # redis_version, which RESP-compatible servers that don't
+                                    # emit a "<server_name>_version" key still report (e.g.
+                                    # Dragonfly reports redis_version, not dragonfly_version).
+                                    if server_version_keyname in redis_info:
+                                        git_version = redis_info[server_version_keyname]
+                                    elif "redis_version" in redis_info:
+                                        git_version = redis_info["redis_version"]
                                     logging.info(
                                         f"Given git_version was None, we've collected that info from the server reply key named {server_version_keyname}. git_version={git_version}"
                                     )
