@@ -2521,12 +2521,20 @@ def process_self_contained_coordinator_stream(
                                         git_hash,
                                     )
 
-                                    # Shut down all nodes in reverse order: replicas, then primary (idx 0)
+                                    # Shut down all nodes in reverse order: replicas, then primary (idx 0).
+                                    # ConnectionError is the expected success path (the server drops the
+                                    # connection on SHUTDOWN). Some RESP servers (e.g. Dragonfly) don't drop
+                                    # it the way redis-py expects, so .shutdown() raises a generic RedisError
+                                    # ("SHUTDOWN seems to have failed") — tolerate it: results are already
+                                    # pushed at this point and the container is force-stopped in teardown.
                                     for redis_conn in reversed(redis_conns):
                                         try:
                                             redis_conn.shutdown(save=False)
-                                        except redis.exceptions.ConnectionError:
-                                            pass
+                                        except redis.exceptions.RedisError as e:
+                                            logging.info(
+                                                "Ignoring non-fatal error during server shutdown "
+                                                "(results already collected): {}".format(e)
+                                            )
 
                                 except redis.exceptions.ConnectionError as e:
                                     logging.critical(
