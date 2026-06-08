@@ -1940,13 +1940,21 @@ def process_self_contained_coordinator_stream(
                                     # redis_version, which RESP-compatible servers that don't
                                     # emit a "<server_name>_version" key still report (e.g.
                                     # Dragonfly reports redis_version, not dragonfly_version).
+                                    _version_src = None
                                     if server_version_keyname in redis_info:
                                         git_version = redis_info[server_version_keyname]
+                                        _version_src = server_version_keyname
                                     elif "redis_version" in redis_info:
                                         git_version = redis_info["redis_version"]
-                                    logging.info(
-                                        f"Given git_version was None, we've collected that info from the server reply key named {server_version_keyname}. git_version={git_version}"
-                                    )
+                                        _version_src = "redis_version"
+                                    if _version_src is not None:
+                                        logging.info(
+                                            f"Given git_version was None, we've collected it from the server reply key '{_version_src}'. git_version={git_version}"
+                                        )
+                                    else:
+                                        logging.warning(
+                                            f"git_version is None and the server reply had neither '{server_version_keyname}' nor 'redis_version'; the datapoint will be version-unlabeled."
+                                        )
                                 # Capture initial sync_full count from master so we can
                                 # compute the delta after the benchmark runs. Write-heavy
                                 # benchmarks with a small replication backlog will trigger

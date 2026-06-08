@@ -575,6 +575,10 @@ def builder_process_stream(
                         build_timeout_secs = int(testDetails[b"build_timeout"].decode())
                     except (ValueError, AttributeError):
                         build_timeout_secs = 600
+                    # Guard against a 0/negative override that would make container.wait
+                    # time out immediately (or behave undefined).
+                    if build_timeout_secs <= 0:
+                        build_timeout_secs = 600
 
                 # Check if artifacts already exist before building
                 prefix = f"build_spec={build_spec}/github_org={github_org}/github_repo={github_repo}/git_branch={str(git_branch)}/git_version={str(git_version)}/git_hash={str(git_hash)}"
