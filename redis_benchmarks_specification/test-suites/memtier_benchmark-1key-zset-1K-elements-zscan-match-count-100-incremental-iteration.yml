@@ -1,0 +1,62 @@
+version: 0.4
+name: memtier_benchmark-1key-zset-1K-elements-zscan-match-count-100-incremental-iteration
+description: >
+  Measures ZSCAN requests/sec while repeatedly completing full cursor traversals
+  of a single skiplist+hashtable sorted set with 1000 members and integer scores.
+  MATCH sortset*1* and COUNT 100 exercise filtering after a non-terminal glob star.
+  This is the full-walk companion of the fixed-cursor MATCH benchmark, preserving
+  its dataset, pattern, COUNT hint and single-client, pipeline-1 load model.
+  Each request uses the cursor returned by the preceding reply; cursor 0 starts
+  another walk. Exported Totals Ops/sec counts both initial and continuation
+  requests, not completed walks or returned members. This is a low-concurrency
+  command-cost workload, not a server-saturation benchmark.
+dbconfig:
+  configuration-parameters:
+    save: '""'
+  check:
+    keyspacelen: 1
+  preload_tool:
+    run_image: redislabs/memtier_benchmark:edge
+    tool: memtier_benchmark
+    arguments: >
+      --command "ZADD test_zadd 1 sortset-__key__"
+      --command-key-pattern P
+      --key-prefix ""
+      --key-minimum 1
+      --key-maximum 1001
+      -n allkeys
+      -c 1
+      -t 1
+      --hide-histogram
+  resources:
+    requests:
+      memory: 1g
+  dataset_name: 1key-zset-hashtable-1K-elements-sortset-named
+  dataset_description: Single zset key `test_zadd` with 1000 members named `sortset-1`..`sortset-1000` (all at score 1; ZSCAN walks the dict, so member-name distribution is what matters); exceeds zset-max-listpack-entries=128, so skiplist+dict encoded.
+tested-commands:
+- zscan
+tested-groups:
+- sorted-set
+redis-topologies:
+- oss-standalone
+build-variants:
+- gcc:15.2.0-amd64-debian-bookworm-default
+- gcc:15.2.0-arm64-debian-bookworm-default
+- dockerhub
+clientconfig:
+  run_image: redislabs/memtier_benchmark:edge
+  tool: memtier_benchmark
+  arguments: >
+    --command "ZSCAN test_zadd 0 MATCH sortset*1* COUNT 100"
+    --command-key-pattern R
+    --hide-histogram
+    --test-time 180
+    --pipeline 1
+    --scan-incremental-iteration
+    -c 1
+    -t 1
+  resources:
+    requests:
+      cpus: '2'
+      memory: 2g
+priority: 67
