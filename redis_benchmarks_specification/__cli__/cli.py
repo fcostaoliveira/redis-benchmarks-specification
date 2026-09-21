@@ -332,10 +332,7 @@ def get_commits_by_branch(args, repo):
     commits = []
     for commit in repo.iter_commits():
         commit_datetime = commit.committed_datetime
-        git_timestamp_ms = int(
-            datetime.datetime.utcfromtimestamp(commit_datetime.timestamp()).timestamp()
-            * 1000
-        )
+        git_timestamp_ms = int(commit_datetime.timestamp() * 1000)
         if (
             args.from_date
             <= datetime.datetime.utcfromtimestamp(commit_datetime.timestamp())
@@ -372,12 +369,7 @@ def get_commits_by_tags(args, repo):
     tags = sorted(repo.tags, key=lambda t: t.commit.committed_datetime)
     for tag in tags:
 
-        git_timestamp_ms = int(
-            datetime.datetime.utcfromtimestamp(
-                tag.commit.committed_datetime.timestamp()
-            ).timestamp()
-            * 1000
-        )
+        git_timestamp_ms = int(tag.commit.committed_datetime.timestamp() * 1000)
 
         if (
             args.from_date
