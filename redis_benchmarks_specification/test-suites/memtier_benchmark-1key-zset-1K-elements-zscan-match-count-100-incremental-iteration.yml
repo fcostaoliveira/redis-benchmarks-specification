@@ -9,7 +9,9 @@ description: >
   Each request uses the cursor returned by the preceding reply; cursor 0 starts
   another walk. Exported Totals Ops/sec counts both initial and continuation
   requests, not completed walks or returned members. This is a low-concurrency
-  command-cost workload, not a server-saturation benchmark.
+  command-cost workload, not a server-saturation benchmark. Separate initial and
+  continuation counters expose walk starts (at most one unfinished walk with t1/c1)
+  and request counts; per-command received-byte rates retain reply-volume context.
 dbconfig:
   configuration-parameters:
     save: '""'
@@ -59,4 +61,14 @@ clientconfig:
     requests:
       cpus: '2'
       memory: 2g
+exporter:
+  redistimeseries:
+    metrics:
+    - $."ALL STATS"."Zscan 0s".Count
+    - $."ALL STATS"."Zscan 0s"."Ops/sec"
+    - $."ALL STATS"."Zscan 0s"."KB/sec RX"
+    - $."ALL STATS"."Zscan <cursor>s".Count
+    - $."ALL STATS"."Zscan <cursor>s"."Ops/sec"
+    - $."ALL STATS"."Zscan <cursor>s"."KB/sec RX"
+    - $."ALL STATS".Totals.Count
 priority: 67
